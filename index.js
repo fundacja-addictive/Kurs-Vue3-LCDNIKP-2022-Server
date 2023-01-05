@@ -22,13 +22,53 @@ var io = new Server(httpServer, {
     }
 });
 
+const players = [];
+/**
+ * Player:
+ * {
+ *   socket: [Object],
+ *   name: "Me the Player",
+ *   ships: [Array],
+ * }
+ * 
+ */
+
 io.on('connection', (socket) => {
-    console.log('Connected', socket.id);
+    if (players.length == 2)
+        return socket.disconnect(true);
+
+    var name = players.length == 1 ? 'first' : 'second';
+
+    players.push({
+        socket: socket,
+        name: name,
+        ships: [],
+    });
+
+    console.log(name + ' player logged in');
+
     socket.on('disconnect', function (reason) {
-        console.log('Disconnected', socket.id);
+        var playerIndex = players.findIndex(p => p.socket.id == socket.id);
+
+        players.splice(playerIndex, 1);
+
+        console.log('Player is disconnected', socket.id);
     });
 
     socket.on('clicked', function (element) {
         console.log(element);
     });
+
+    socket.on('allShipsPicked', function (data) {
+        console.log('Player ' + socket.id + ' ready! ', JSON.stringify(data));
+
+        players.forEach(p => {
+            if (p.socket.id == socket.id)
+                return;
+
+            p.socket.emit('playerReady', {
+                id: socket.id,
+            });
+        });
+    })
 });
