@@ -47,6 +47,8 @@ io.on('connection', (socket) => {
 
     console.log(name + ' player logged in');
 
+    socket.join('game');
+
     socket.on('disconnect', function (reason) {
         var playerIndex = players.findIndex(p => p.socket.id == socket.id);
 
@@ -73,5 +75,8 @@ io.on('connection', (socket) => {
                 });
             }
         });
+
+        if (players.length == 2 && players[0].ships.length > 0 && players[1].ships.length > 0)
+        io.to('game').emit('gameIsOn', true);
     })
 });
