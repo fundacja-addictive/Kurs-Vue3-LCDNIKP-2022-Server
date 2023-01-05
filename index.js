@@ -62,13 +62,16 @@ io.on('connection', (socket) => {
     socket.on('allShipsPicked', function (data) {
         console.log('Player ' + socket.id + ' ready! ', JSON.stringify(data));
 
-        players.forEach(p => {
-            if (p.socket.id == socket.id)
-                return;
+        socket.emit('blockPicking', true);
 
-            p.socket.emit('playerReady', {
-                id: socket.id,
-            });
+        players.forEach(p => {
+            if (p.socket.id == socket.id) {
+                p.ships = data;
+            } else {
+                p.socket.emit('playerReady', {
+                    id: socket.id,
+                });
+            }
         });
     })
 });
