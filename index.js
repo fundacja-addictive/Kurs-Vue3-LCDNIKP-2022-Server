@@ -33,12 +33,21 @@ const players = [];
  * 
  */
 
+function getPlayerIndex (socket) {
+    return players.findIndex(p => {
+        if (p.socket.id == socket.id) {
+            return true;
+        }
+    });
+}
+
 io.on('connection', (socket) => {
     if (players.length == 2)
         return socket.disconnect(true);
 
-    var name = players.length == 1 ? 'first' : 'second';
-
+    
+    var name = players.length == 0 ? 'first' : 'second';
+    
     players.push({
         socket: socket,
         name: name,
@@ -76,7 +85,108 @@ io.on('connection', (socket) => {
             }
         });
 
-        if (players.length == 2 && players[0].ships.length > 0 && players[1].ships.length > 0)
-        io.to('game').emit('gameIsOn', true);
+        if (players.length == 2 && players[0].ships.length > 0 && players[1].ships.length > 0) {
+            io.to('game').emit('gameIsOn', true);
+
+            players[0].socket.emit('yourTurn', true);
+        }
     })
+
+    socket.on('shoot', (data) => {
+        var coordinates = data.coordinates; // {x:..., y:...}
+
+        var playerIndex = getPlayerIndex(socket);
+
+        console.log(playerIndex);
+
+        if (playerIndex == 0) {
+            // verify hit on player's 1 board
+            if (checkHit(1, coordinates)) {
+                io.to('game').emit('hit', {
+                    hitBy: 0,
+                    coordinates: coordinates,
+                });
+
+                if (checkDeadShip(0, coordinates)) {
+                    io.to('game').emit('hitAndDead', {
+
+                    });
+                }
+            } else {
+                io.to('game').emit('miss', {
+                    coordinates: coordinates,
+                });
+                socket.emit('blockPicking', true);
+                players[1].socket.emit('yourTurn', true);
+            }
+        } else if (playerIndex == 1) {
+            // verify hit on player's 0 board
+            if (checkHit(0, coordinates)) {
+                io.to('game').emit('hit', {
+                    hitBy: 1,
+                    coordinates: coordinates,
+                });
+
+                if (checkDeadShip(0, coordinates)) {
+                    io.to('game').emit('hitAndDead', {
+
+                    });
+                }
+            } else {
+                io.to('game').emit('miss', {
+                    coordinates: coordinates,
+                });
+                socket.emit('blockPicking', true);
+                players[0].socket.emit('yourTurn', true);
+            }
+        } else {
+            console.log('Cannot determine the other player!');
+        }
+
+    });
 });
+
+/**
+ * 
+ * 
+ * @param {*} playerIndex 
+ * @param {*} coordinates - {x: ... , y: ... }
+ */
+function checkHit (playerIndex, coordinates) {
+    var ships = players[playerIndex].ships;
+
+    var hit = false;
+
+    ships.forEach((ship, i) => {
+        ship.nodes.forEach((node, j) => {
+            if (coordinates.x == node.x && coordinates.y == node.y) {
+                // Why this is not saved?
+                players[playerIndex].ships[i].nodes[j].hit = true; 
+                hit = true;
+            }
+        })
+    });
+
+    return hit;
+}
+
+function checkDeadShip (playerIndex, coordinates) {
+    var ships = players[playerIndex].ships;
+
+    var hitShip = null;
+
+    ships.forEach(ship => {
+        ship.isDead = true;
+        ship.nodes.forEach(node => {
+            if (!node.hit)
+                ship.isDead = false;
+
+            if (coordinates.x == node.x && coordinates.y == node.y) {
+                console.log('Hit ship', ship);
+                hitShip = ship; 
+            }
+        });
+    });
+
+    return hitShip.isDead;
+}
