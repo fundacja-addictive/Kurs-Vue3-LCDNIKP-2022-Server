@@ -4,8 +4,6 @@ import * as http from 'http';
 
 var app = express();
 
-// app.listen(8081);
-
 app.get('/', function (req, res) {
     res.send('Hello world');
 });
@@ -22,7 +20,6 @@ var io = new Server(httpServer, {
     }
 });
 
-const players = [];
 /**
  * Player:
  * {
@@ -31,8 +28,15 @@ const players = [];
  *   ships: [Array],
  * }
  * 
- */
+*/
+const players = [];
 
+/**
+ * Returns playerIndex associated with a given socket connection.
+ * 
+ * @param {Socket} socket socket client that we want to obtain player index for.
+ * @returns int
+ */
 function getPlayerIndex (socket) {
     return players.findIndex(p => {
         if (p.socket.id == socket.id) {
@@ -41,10 +45,10 @@ function getPlayerIndex (socket) {
     });
 }
 
+// Declare listener on new socket connecting
 io.on('connection', (socket) => {
     if (players.length == 2)
         return socket.disconnect(true);
-
     
     var name = players.length == 0 ? 'first' : 'second';
     
@@ -54,9 +58,17 @@ io.on('connection', (socket) => {
         ships: [],
     });
 
+    socket.emit('yourId', players.length - 1);
+
     console.log(name + ' player logged in');
 
     socket.join('game');
+
+    /**
+     * 
+     * Below declaring listeners for numerous events associated with player's connection
+     * 
+     */
 
     socket.on('disconnect', function (reason) {
         var playerIndex = players.findIndex(p => p.socket.id == socket.id);
@@ -107,7 +119,10 @@ io.on('connection', (socket) => {
             var checkedShip = checkAndGetDeadShip(opponentIndex, coordinates);
 
             if (checkedShip) {
-                io.to('game').emit('hitAndDead', checkedShip);
+                io.to('game').emit('hitAndDead', {
+                    hitBy: playerIndex,
+                    ship: checkedShip,
+                });
                 players[opponentIndex].ships.find(ship => ship.id == checkedShip.id).isDead = true;
 
                 if (getShipsLeft(opponentIndex) == 0) {
@@ -118,6 +133,7 @@ io.on('connection', (socket) => {
             }
         } else {
             io.to('game').emit('miss', {
+                missBy: playerIndex,
                 coordinates: coordinates,
             });
             socket.emit('blockPicking', true);
@@ -127,10 +143,10 @@ io.on('connection', (socket) => {
 });
 
 /**
+ * Checks if hitting given coordinates means hitting any ship of given player's.
  * 
- * 
- * @param {*} playerIndex 
- * @param {*} coordinates - {x: ... , y: ... }
+ * @param {int} playerIndex 
+ * @param {object} coordinates - {x: ... , y: ... }
  */
 function checkHit (playerIndex, coordinates) {
     var ships = players[playerIndex].ships;
