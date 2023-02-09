@@ -96,53 +96,33 @@ io.on('connection', (socket) => {
         var coordinates = data.coordinates; // {x:..., y:...}
 
         var playerIndex = getPlayerIndex(socket);
+        var opponentIndex = getOpponentIndex(playerIndex);
 
-        console.log(playerIndex);
+        if (checkHit(opponentIndex, coordinates)) {
+            io.to('game').emit('hit', {
+                hitBy: playerIndex,
+                coordinates: coordinates,
+            });
 
-        if (playerIndex == 0) {
-            // verify hit on player's 1 board
-            if (checkHit(1, coordinates)) {
-                io.to('game').emit('hit', {
-                    hitBy: 0,
-                    coordinates: coordinates,
-                });
+            var checkedShip = checkAndGetDeadShip(opponentIndex, coordinates);
 
-                if (checkDeadShip(0, coordinates)) {
-                    io.to('game').emit('hitAndDead', {
+            if (checkedShip) {
+                io.to('game').emit('hitAndDead', checkedShip);
+                players[opponentIndex].ships.find(ship => ship.id == checkedShip.id).isDead = true;
 
-                    });
+                if (getShipsLeft(opponentIndex) == 0) {
+                    io.to('game').emit('gameEnd', {});
+                    players[opponentIndex].socket.emit('youLoose');
+                    players[playerIndex].socket.emit('youWin');
                 }
-            } else {
-                io.to('game').emit('miss', {
-                    coordinates: coordinates,
-                });
-                socket.emit('blockPicking', true);
-                players[1].socket.emit('yourTurn', true);
-            }
-        } else if (playerIndex == 1) {
-            // verify hit on player's 0 board
-            if (checkHit(0, coordinates)) {
-                io.to('game').emit('hit', {
-                    hitBy: 1,
-                    coordinates: coordinates,
-                });
-
-                if (checkDeadShip(0, coordinates)) {
-                    io.to('game').emit('hitAndDead', {
-
-                    });
-                }
-            } else {
-                io.to('game').emit('miss', {
-                    coordinates: coordinates,
-                });
-                socket.emit('blockPicking', true);
-                players[0].socket.emit('yourTurn', true);
             }
         } else {
-            console.log('Cannot determine the other player!');
+            io.to('game').emit('miss', {
+                coordinates: coordinates,
+            });
+            socket.emit('blockPicking', true);
+            players[opponentIndex].socket.emit('yourTurn', true);
         }
-
     });
 });
 
@@ -170,23 +150,73 @@ function checkHit (playerIndex, coordinates) {
     return hit;
 }
 
-function checkDeadShip (playerIndex, coordinates) {
+/**
+ * Checks if hitting given coordinates results in a dead ship for given player's board
+ * 
+ * @param {int} playerIndex Is player 0 or 1?
+ * @param {object} coordinates {x:...,y:...}
+ * @returns bool
+ */
+function checkAndGetDeadShip (playerIndex, coordinates) {
     var ships = players[playerIndex].ships;
 
     var hitShip = null;
 
     ships.forEach(ship => {
-        ship.isDead = true;
         ship.nodes.forEach(node => {
-            if (!node.hit)
-                ship.isDead = false;
-
             if (coordinates.x == node.x && coordinates.y == node.y) {
                 console.log('Hit ship', ship);
                 hitShip = ship; 
             }
         });
     });
+    
+    var hitNodes = 0;
 
-    return hitShip.isDead;
+    if (hitShip) {
+        hitShip.nodes.forEach(node => {
+            if (node.hit) 
+                    hitNodes++; /// ====   hitNodes += 1;  ====  hitNodes = hitNodes + 1; 
+        });
+    
+        if (hitShip.nodes.length == hitNodes) {
+            return hitShip;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Returns index of given player's opponent.
+ * 
+ * @param {int} playerIndex Index of a player to check
+ * @returns int
+ */
+function getOpponentIndex (playerIndex) {
+    switch (playerIndex) {
+        case 0:
+            return 1;
+        case 1:
+            return 0;
+        default:
+            throw "Player not found!";
+    } 
+}
+
+/**
+ * Returns count of not-dead ships for a given player
+ * 
+ * @param {int} playerIndex Index of a player to check
+ * @returns int
+ */
+function getShipsLeft (playerIndex) {
+    var shipsLeft = 0;
+
+    players[playerIndex].ships.forEach(ship => {
+        if (!ship.isDead)
+            shipsLeft++;
+    })
+    
+    return shipsLeft;
 }
