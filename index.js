@@ -38,31 +38,30 @@ const players = [];
  * @returns int
  */
 function getPlayerIndex (socket) {
-    return players.findIndex(p => {
-        if (p.socket.id == socket.id) {
-            return true;
-        }
-    });
+    return socket.id;
 }
 
 // Declare listener on new socket connecting
 io.on('connection', (socket) => {
-    if (players.length == 2)
+    if (Object.keys(players).length == 2)
         return socket.disconnect(true);
     
-    var name = players.length == 0 ? 'first' : 'second';
-    
-    players.push({
+    players[socket.id] = {
         socket: socket,
-        name: name,
+        name: null,
         ships: [],
-    });
+    };
 
-    socket.emit('yourId', players.length - 1);
+    socket.emit('yourId', socket.id);
 
-    console.log(name + ' player logged in');
+    console.log('Player logged in ' + socket.id);
 
     socket.join('game');
+
+    socket.on('greeting', function (data) {
+        players[socket.id].name = data.name;
+        console.log ('Hello from ' + data.name);
+    });
 
     /**
      * 
@@ -71,9 +70,7 @@ io.on('connection', (socket) => {
      */
 
     socket.on('disconnect', function (reason) {
-        var playerIndex = players.findIndex(p => p.socket.id == socket.id);
-
-        players.splice(playerIndex, 1);
+        delete players[socket.id];
 
         console.log('Player is disconnected', socket.id);
     });
@@ -87,20 +84,29 @@ io.on('connection', (socket) => {
 
         socket.emit('blockPicking', true);
 
-        players.forEach(p => {
+        var playerIndex = getPlayerIndex(socket);
+        var opponentIndex = getOpponentIndex(playerIndex);
+
+        for (const [index, p] of Object.entries(players)) {
             if (p.socket.id == socket.id) {
                 p.ships = data;
             } else {
-                p.socket.emit('playerReady', {
+                p.socket.emit('opponentReady', {
                     id: socket.id,
+                    name: players[playerIndex].name,
                 });
             }
-        });
+        }
 
-        if (players.length == 2 && players[0].ships.length > 0 && players[1].ships.length > 0) {
+        if (players[playerIndex].ships.length > 0 && players[opponentIndex].ships.length > 0) {
             io.to('game').emit('gameIsOn', true);
 
-            players[0].socket.emit('yourTurn', true);
+            var playerId = Object.keys(players)[
+                Math.round(Math.random())
+            ];
+
+            players[playerId].socket.emit('yourTurn', true);
+            console.log('Player\'s ' + playerId + ' turn');
         }
     })
 
@@ -210,14 +216,16 @@ function checkAndGetDeadShip (playerIndex, coordinates) {
  * @returns int
  */
 function getOpponentIndex (playerIndex) {
-    switch (playerIndex) {
-        case 0:
-            return 1;
-        case 1:
-            return 0;
-        default:
-            throw "Player not found!";
-    } 
+    var opponent = null;
+    for (const [index, p] of Object.entries(players)) {
+        if (playerIndex != index)
+            opponent = index;
+    }
+
+    if (!opponent)
+        throw "Player not found!";
+
+    return opponent;
 }
 
 /**
